@@ -110,3 +110,67 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// sys_getprocs: fill user buffer with process info
+uint64
+sys_getprocs(void)
+{
+  uint64 addr;
+  int max;
+  argaddr(0, &addr);
+  argint(1, &max);
+  return kgetprocs(addr, max);
+}
+
+// sys_sysinfo: return system info (free memory, nproc, uptime)
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;
+  struct sysinfo info;
+  struct proc *p;
+  int nproc = 0;
+
+  argaddr(0, &addr);
+
+  // count non-UNUSED procs
+  extern struct proc proc[];
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->state != UNUSED) nproc++;
+    release(&p->lock);
+  }
+
+  acquire(&tickslock);
+  info.uptime = ticks;
+  release(&tickslock);
+
+  info.freemem = kfreemem();
+  info.nproc   = nproc;
+
+  if (copyout(myproc()->pagetable, myproc()->sz, addr, (char*)&info, sizeof(info)) < 0)
+    return -1;
+  return 0;
+}
+
+// sys_trace: set syscall trace mask for current process
+uint64
+sys_trace(void)
+{
+  int mask;
+  argint(0, &mask);
+  myproc()->tracemask = mask;
+  return 0;
+}
+
+// sys_nice: set scheduler priority (0=highest, 19=lowest)
+uint64
+sys_nice(void)
+{
+  int prio;
+  argint(0, &prio);
+  if (prio < 0) prio = 0;
+  if (prio > 19) prio = 19;
+  myproc()->priority = prio;
+  return 0;
+}

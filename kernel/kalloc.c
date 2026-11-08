@@ -11,6 +11,7 @@
 
 void freerange(void *pa_start, void *pa_end);
 
+
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
@@ -23,10 +24,66 @@ struct {
   struct run *freelist;
 } kmem;
 
+
+// Reference counts for physical pages (COW)
+// 128MB / 4096 = 32768 pages max
+struct {
+  struct spinlock lock;
+  int count[32768];
+} pageref;
+
+#define PA2IDX(pa) (((uint64)(pa) - KERNBASE) / PGSIZE)
+
+// Increment reference count for a physical page
+void
+incref(void *pa)
+{
+  if ((uint64)pa < KERNBASE || (uint64)pa >= PHYSTOP) return;
+  acquire(&pageref.lock);
+  pageref.count[PA2IDX(pa)]++;
+  release(&pageref.lock);
+}
+
+// Decrement reference count for a physical page
+void
+decref(void *pa)
+{
+  if ((uint64)pa < KERNBASE || (uint64)pa >= PHYSTOP) return;
+  acquire(&pageref.lock);
+  if (pageref.count[PA2IDX(pa)] > 0)
+    pageref.count[PA2IDX(pa)]--;
+  release(&pageref.lock);
+}
+
+// Get reference count for a physical page
+int
+getref(void *pa)
+{
+  if ((uint64)pa < KERNBASE || (uint64)pa >= PHYSTOP) return 0;
+  return pageref.count[PA2IDX(pa)];
+}
+
+// Return number of bytes of free memory.
+uint64
+kfreemem(void)
+{
+  struct run *r;
+  uint64 count = 0;
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  while (r) {
+    count += PGSIZE;
+    r = r->next;
+  }
+  release(&kmem.lock);
+  return count;
+}
+
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&pageref.lock, "pageref");
   freerange(end, (void *)PHYSTOP);
 }
 
@@ -50,6 +107,15 @@ kfree(void *pa)
 
   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  // Decrement refcount; only free if it reaches 0
+  if ((uint64)pa >= KERNBASE && (uint64)pa < PHYSTOP) {
+    acquire(&pageref.lock);
+    pageref.count[PA2IDX(pa)]--;
+    int rc = pageref.count[PA2IDX(pa)];
+    release(&pageref.lock);
+    if (rc > 0) return; // still referenced
+  }
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
@@ -76,7 +142,12 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if (r)
+  if (r) {
     memset((char *)r, 5, PGSIZE); // fill with junk
+    // Set initial reference count to 1
+    acquire(&pageref.lock);
+    pageref.count[PA2IDX(r)] = 1;
+    release(&pageref.lock);
+  }
   return (void *)r;
 }

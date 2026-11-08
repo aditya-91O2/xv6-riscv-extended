@@ -301,7 +301,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for (i = 0; i < sz; i += PGSIZE) {
     if ((pte = walk(old, i, 0)) == 0)
@@ -310,19 +309,53 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       continue; // physical page hasn't been allocated
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
-      goto err;
+
+    // COW: mark both parent and child PTEs as read-only + COW
+    // This avoids copying pages until one of them writes.
+    *pte = (*pte & ~PTE_W) | PTE_COW;
+    flags = (flags & ~PTE_W) | PTE_COW;
+
+    incref((void*)pa);  // one more reference to this physical page
+
+    if (mappages(new, i, PGSIZE, pa, flags) != 0) {
+      decref((void*)pa);
+      uvmunmap(new, 0, i / PGSIZE, 1);
+      return -1;
     }
   }
   return 0;
+}
 
-err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
+// Handle a COW page fault at virtual address va.
+// Allocates a new physical page (or reuses if only ref), copies content,
+// remaps writable.
+int
+cowcopy(pagetable_t pagetable, uint64 va)
+{
+  va = PGROUNDDOWN(va);
+  if (va >= MAXVA) return -1;
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_COW) == 0)
+    return -1;
+
+  uint64 pa = PTE2PA(*pte);
+  uint flags = (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W;
+
+  if (getref((void*)pa) == 1) {
+    // We're the only reference — just make it writable, no copy needed
+    *pte = (*pte & ~PTE_COW) | PTE_W;
+    return 0;
+  }
+
+  // Allocate a new page and copy content
+  char *mem = kalloc();
+  if (mem == 0) return -1;
+  memmove(mem, (char*)pa, PGSIZE);
+  decref((void*)pa);  // drop our reference to the old page
+
+  // Remap virtual address to new physical page, writable
+  *pte = PA2PTE((uint64)mem) | flags;
+  return 0;
 }
 
 // mark a PTE invalid for user access.

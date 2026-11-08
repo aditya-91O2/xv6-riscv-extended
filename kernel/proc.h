@@ -78,6 +78,8 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// Info exported to user-space by getprocs()
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -101,4 +103,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int priority;                // Scheduler priority (0=highest, 19=lowest)
+  int tracemask;               // Bitmask of syscalls to trace
 };

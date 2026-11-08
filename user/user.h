@@ -25,6 +25,13 @@ char *sys_sbrk(int, int);
 int pause(int);
 int uptime(void);
 int sync(void);
+struct procinfo;
+int getprocs(struct procinfo *, int);
+struct sysinfo;
+int sysinfo(struct sysinfo *);
+int trace(int);
+int nice(int);
+int symlink(const char*, const char*);
 
 // ulib.c
 int stat(const char *, struct stat *);

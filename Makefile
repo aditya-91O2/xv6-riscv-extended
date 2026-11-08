@@ -151,11 +151,23 @@ UPROGS=\
 	$U/_forphan\
 	$U/_dorphan\
 	$U/_sync\
+	$U/_ps\
+	$U/_sysinfo\
+	$U/_trace\
+	$U/_nice\
+	$U/_test_nice\
+	$U/_test_symlink\
+	$U/_test_cow\
 	$U/_touch\
 	$U/_cp\
 	$U/_head\
 	$U/_tail\
 	$U/_clear\
+	$U/_uptime\
+	$U/_test_ps\
+	$U/_test_sysinfo\
+	$U/_test_trace\
+	$U/_test_utils\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

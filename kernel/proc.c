@@ -145,6 +145,8 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->priority = 10;    // default priority (middle)
+  p->tracemask = 0;    // no tracing by default
 
   return p;
 }
@@ -288,6 +290,8 @@ kfork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+  np->tracemask = p->tracemask;  // inherit trace mask
+  np->priority = p->priority;    // inherit priority
 
   pid = np->pid;
 
@@ -418,6 +422,36 @@ kwait(uint64 addr)
   }
 }
 
+
+// Fill buf (user addr) with up to max procinfo structs. Returns count filled.
+int
+kgetprocs(uint64 addr, int max)
+{
+  struct proc *p;
+  struct procinfo info;
+  int count = 0;
+  struct proc *curp = myproc();
+
+  for (p = proc; p < &proc[NPROC] && count < max; p++) {
+    acquire(&p->lock);
+    if (p->state != UNUSED) {
+      info.pid   = p->pid;
+      info.ppid  = p->parent ? p->parent->pid : 0;
+      info.state = (int)p->state;
+      info.sz    = p->sz;
+      safestrcpy(info.name, p->name, sizeof(info.name));
+      release(&p->lock);
+      if (copyout(curp->pagetable, curp->sz, addr + count * sizeof(info),
+                  (char*)&info, sizeof(info)) < 0)
+        return -1;
+      count++;
+    } else {
+      release(&p->lock);
+    }
+  }
+  return count;
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -429,40 +463,48 @@ void
 scheduler(void)
 {
   struct proc *p;
+  struct proc *chosen;
   struct cpu *c = mycpu();
 
   c->proc = 0;
   for (;;) {
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting. Then turn them back off
-    // to avoid a possible race between an interrupt
-    // and wfi.
+    // Enable interrupts briefly to avoid deadlock if all processes wait,
+    // then disable to avoid race with wfi.
     intr_on();
     intr_off();
 
-    int found = 0;
+    // Find the highest-priority (lowest priority number) RUNNABLE process
+    chosen = 0;
     for (p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if (p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Don't re-enable interrupts on release.
-        mycpu()->intena = 0;
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+        if (chosen == 0 || p->priority < chosen->priority) {
+          if (chosen != 0) release(&chosen->lock);
+          chosen = p;
+          // keep chosen->lock held
+        } else {
+          release(&p->lock);
+        }
+      } else {
+        release(&p->lock);
       }
-      release(&p->lock);
     }
-    if (found == 0) {
+
+    if (chosen != 0) {
+      // Switch to chosen process. It is the process's job
+      // to release its lock and then reacquire it
+      // before jumping back to us.
+      chosen->state = RUNNING;
+      c->proc = chosen;
+      swtch(&c->context, &chosen->context);
+
+      // Don't re-enable interrupts on release.
+      mycpu()->intena = 0;
+
+      // Process is done running for now.
+      c->proc = 0;
+      release(&chosen->lock);
+    } else {
       // nothing to run; stop running on this core until an interrupt.
       asm volatile("wfi");
     }

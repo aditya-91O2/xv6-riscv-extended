@@ -103,6 +103,11 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_sync(void);
+extern uint64 sys_getprocs(void);
+extern uint64 sys_sysinfo(void);
+extern uint64 sys_trace(void);
+extern uint64 sys_nice(void);
+extern uint64 sys_symlink(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -130,6 +135,11 @@ static uint64 (*syscalls[])(void) = {
   [SYS_mkdir]   = sys_mkdir,
   [SYS_close]   = sys_close,
   [SYS_sync]    = sys_sync,
+  [SYS_getprocs] = sys_getprocs,
+  [SYS_sysinfo]  = sys_sysinfo,
+  [SYS_trace]    = sys_trace,
+  [SYS_nice]     = sys_nice,
+  [SYS_symlink]  = sys_symlink,
   // clang-format on
 };
 
@@ -144,6 +154,11 @@ syscall(void)
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
     p->trapframe->a0 = syscalls[num]();
+    // Print trace output if this syscall is being traced
+    if (p->tracemask & (1 << num)) {
+      printk("trace: pid=%d %s -> syscall %d = %d\n",
+             p->pid, p->name, num, (int)p->trapframe->a0);
+    }
   } else {
     printk("%d %s: unknown sys call %d\n", p->pid, p->name, num);
     p->trapframe->a0 = -1;

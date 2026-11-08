@@ -43,3 +43,8 @@ entry("sbrk");
 entry("pause");
 entry("uptime");
 entry("sync");
+entry("getprocs");
+entry("sysinfo");
+entry("trace");
+entry("nice");
+entry("symlink");
