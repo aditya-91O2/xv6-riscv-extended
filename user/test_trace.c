@@ -14,3 +14,4 @@ int main(void) {
   printf("test_trace passed!\n");
   exit(0);
 }
+

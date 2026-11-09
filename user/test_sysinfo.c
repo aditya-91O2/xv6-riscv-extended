@@ -16,3 +16,4 @@ int main(void) {
   printf("test_sysinfo passed!\n");
   exit(0);
 }
+

@@ -8,3 +8,4 @@ main(void)
   printf("uptime: %d ticks (%d seconds)\n", t, t / 100);
   exit(0);
 }
+

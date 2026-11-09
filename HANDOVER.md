@@ -170,3 +170,4 @@ print(raw.decode('latin1', errors='replace'))
 - **2026-11-09**: Implemented Feature 2 (`getprocs` syscall and `ps` command).
 - **2026-11-09**: Implemented Feature 1 (`touch`, `cp`, `head`, `tail`, `clear` userland utilities).
 - **2026-11-09**: Baseline setup and verified QEMU boot under WSL2 Ubuntu 26.04.
+
