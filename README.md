@@ -407,16 +407,23 @@ In addition, standard commands (`cat`, `head`, `tail`, `grep`, `wc`, `cp`, and `
 - File system capacity scaling (`FSSIZE` expansion in `kernel/param.h`).
 
 #### Implementation Details
-1. **Recursive Search Engine (`user/ulib.c: find_file()`)**:
+1. **Recursive Search Engine with Fail-Safe Bounds (`user/ulib.c: find_file()`, `find_file_timeout()`)**:
    - Recursively opens directories, reads `struct dirent` records, builds absolute path buffers, and compares filenames against target queries.
-2. **Intelligent Error Dispatcher (`user/ulib.c: file_not_found()`, `open_or_locate()`)**:
+   - **Fail-Safe Depth Budget (`SEARCH_MAX_DEPTH = 8`)**: Prevents stack overflow in xv6's single 4096-byte user stack and bounds recursive traversal.
+   - **Fail-Safe Step Budget (`SEARCH_MAX_ENTRIES = 500`)**: Caps total directory entries inspected during a search to prevent CPU spinning on wide file trees.
+   - **Fail-Safe Wall-Clock Timeout (`SEARCH_TIMEOUT_TICKS = 50`)**: Uses `uptime()` system call to enforce a maximum search duration (~0.5s in xv6). If the time limit is exceeded, recursion halts immediately and returns `-1`.
+   - **Symlink Cycle Protection (`O_NOFOLLOW`)**: All directory inspections use `open(..., O_RDONLY | O_NOFOLLOW)` so symbolic links pointing to parent or root directories (e.g. `ln -s / loop`) are never followed as directories, preventing infinite recursion cycles.
+2. **Kernel Enhancement (`kernel/sysfile.c: sys_open`)**:
+   - Updated directory open checks to allow `(omode & ~O_NOFOLLOW) == O_RDONLY`, permitting userland tools to inspect directories without automatically following symlink targets.
+3. **Intelligent Error Dispatcher (`user/ulib.c: file_not_found()`, `open_or_locate()`)**:
    - `open_or_locate(cmd, path, flags)` wraps standard `open()`. If opening fails, it executes `find_file("/", base, ...)` to determine if the target resides in another folder and outputs the path, or confirms non-existence.
+   - If the search times out or exceeds limits, it reports: `<cmd>: '<path>': search timed out, file not exists`.
    - Built with raw `write()` system calls to prevent linking dependencies with `forktest`.
-3. **Core Utility Updates**:
+4. **Core Utility Updates**:
    - Updated `cat.c`, `head.c`, `tail.c`, `grep.c`, `wc.c`, `cp.c`, and `sh.c` to use `open_or_locate()` and `file_not_found()`.
-4. **CLI Utilities & Tests**:
-   - Added `user/find.c` (recursive file finder) and `user/search.c` (alias).
-   - Added `user/test_find.c` validating deep file discovery, non-existent rejection, and error message paths.
+5. **CLI Utilities & Tests**:
+   - Added `user/find.c` (recursive file finder with depth, step, and tick timeouts) and `user/search.c` (alias).
+   - Added `user/test_find.c` validating deep file discovery, non-existent rejection, depth limit enforcement, step budget fail-safe aborts, and symlink loop immunity.
    - Scaled `FSSIZE` to 4000 blocks in `kernel/param.h` to comfortably host all utilities and test binaries.
 
 #### Demo Output

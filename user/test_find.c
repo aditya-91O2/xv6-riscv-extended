@@ -53,6 +53,35 @@ main(void)
     exit(1);
   }
 
+  // Test 4: Fail-safe depth budget limit
+  printf("test_find: testing depth limit fail-safe...\n");
+  int depth_res = find_file_timeout("/", "deepfile.txt", path_out, sizeof(path_out), 50, 1, 500);
+  if (depth_res != 0) {
+    printf("test_find: depth-limited search should not reach depth 2 file\n");
+    exit(1);
+  }
+  printf("test_find: depth limit correctly prevented excessive recursion (OK)\n");
+
+  // Test 5: Fail-safe entry/step budget limit
+  printf("test_find: testing step budget limit fail-safe...\n");
+  int step_res = find_file_timeout("/", "deepfile.txt", path_out, sizeof(path_out), 50, 8, 2);
+  if (step_res != -1) {
+    printf("test_find: step-budget limit should abort with -1, got %d\n", step_res);
+    exit(1);
+  }
+  printf("test_find: step budget limit correctly triggered fail-safe (OK)\n");
+
+  // Test 6: Symlink cycle safety
+  printf("test_find: testing symlink directory cycle protection...\n");
+  symlink("/testsearch", "/testsearch/cycle_link");
+  int cycle_res = find_file("/", "ghost_cycle_file", path_out, sizeof(path_out));
+  if (cycle_res > 0) {
+    printf("test_find: false match in cycle\n");
+    exit(1);
+  }
+  unlink("/testsearch/cycle_link");
+  printf("test_find: symlink loop gracefully handled without infinite recursion (OK)\n");
+
   // Cleanup
   unlink("/testsearch/subdir/deepfile.txt");
   unlink("/testsearch/subdir");

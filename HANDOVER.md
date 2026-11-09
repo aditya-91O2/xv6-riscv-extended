@@ -139,7 +139,15 @@ Follow this strict 7-step checklist whenever introducing a new syscall:
 
 ### 5.6 Fast File Search & Smart Path Error Discovery
 - **Design Decision**: Implemented recursive file system traversal in `user/ulib.c: find_file()` using directory entry descriptors (`struct dirent`) and `stat()`.
-- **Unified Error Dispatcher**: Implemented `open_or_locate()` and `file_not_found()` in `ulib.c` using raw `write(2, ...)` system calls. This avoids introducing a dependency on `printf.o`, preserving the standalone build of `forktest`.
+- **Fail-Safe Resource Limits & Timeout**:
+  - `SEARCH_MAX_DEPTH = 8`: Prevents stack exhaustion in xv6's single 4096-byte user stack frame.
+  - `SEARCH_MAX_ENTRIES = 500`: Caps maximum directory entries examined during any single search.
+  - `SEARCH_TIMEOUT_TICKS = 50`: Uses `uptime()` system call to enforce a maximum search duration (~0.5s in xv6), aborting with `-1` if exceeded.
+  - `O_NOFOLLOW` Symlink Loop Protection: Directory traversal uses `open(..., O_RDONLY | O_NOFOLLOW)`, ensuring circular directory symlinks (e.g. `ln -s / loop`) are never recursed into.
+  - Configurable API: Added `find_file_timeout(dir, target, out_path, maxlen, timeout_ticks, max_depth, max_entries)` in `user/user.h` and `user/ulib.c`.
+- **Kernel Fix in `kernel/sysfile.c`**:
+  - Updated directory validation check to `(omode & ~O_NOFOLLOW) != O_RDONLY` so directories can be safely inspected with `O_NOFOLLOW` without tripping directory write restrictions.
+- **Unified Error Dispatcher**: Implemented `open_or_locate()` and `file_not_found()` in `ulib.c` using raw `write(2, ...)` system calls. This avoids introducing a dependency on `printf.o`, preserving the standalone build of `forktest`. If search times out, it reports `<cmd>: '<path>': search timed out, file not exists`.
 - **Command Integration**: Integrated into `cat`, `head`, `tail`, `grep`, `wc`, `cp`, and `sh`. When a file cannot be opened locally, the command searches `/`. If found, it outputs the path; if not found anywhere, it outputs `'<file>': file not exists`.
 - **Disk Scaling**: Expanded `FSSIZE` in `kernel/param.h` from 2000 to 4000 blocks to accommodate all userland binaries without overflowing `fs.img` sectors.
 
@@ -178,6 +186,7 @@ print(raw.decode('latin1', errors='replace'))
 
 ## 7. Changelog (Newest First)
 
+- **2026-11-09**: Added fail-safe resource bounding, depth limits (8), step budget (500), tick timeout (`uptime()`), and symlink loop protection (`O_NOFOLLOW`) to `find_file`, `file_not_found`, and `find.c`. Updated `kernel/sysfile.c` to support `O_RDONLY | O_NOFOLLOW` on directories.
 - **2026-11-09**: Implemented Feature 9 (Fast File Search `find`/`search`, intelligent path error discovery in core commands, `FSSIZE=4000`, `test_find`).
 - **2026-11-09**: Implemented Feature 8 (Shell Tab-Completion and interactive line editor in `user/sh.c` and `kernel/console.c`, added `test_tab`).
 - **2026-11-09**: Added `uptime` CLI utility, built and verified automated test runners (`test_ps`, `test_sysinfo`, `test_trace`, `test_utils`).

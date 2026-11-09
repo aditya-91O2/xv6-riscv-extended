@@ -48,6 +48,7 @@ void *memcpy(void *, const void *, uint);
 char *sbrk(int);
 char *sbrklazy(int);
 int find_file(const char *, const char *, char *, int);
+int find_file_timeout(const char *, const char *, char *, int, int, int, int);
 void file_not_found(const char *, const char *);
 int open_or_locate(const char *, const char *, int);
 
