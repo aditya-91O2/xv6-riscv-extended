@@ -62,6 +62,7 @@ make qemu
 | **6** | Symbolic Links & Path Resolution (`ln -s`) | File System (VFS/Vnode) | Medium | `symlink` (sys #27) | **Completed & Verified** |
 | **7** | Copy-on-Write (COW) Page Allocation | Virtual Memory | Hard | Store Page-Fault (`scause 15`) | **Completed & Verified** |
 | **8** | Shell Tab-Completion & Line Editing | Shell / I/O Subsystem | Medium | Console Read/Interrupt Interception | **Completed & Verified** |
+| **9** | Fast System-Wide File Search & Path Discovery | File System / Userland | Medium | Recursive Directory Scanner (`find`, `search`) | **Completed & Verified** |
 
 ---
 
@@ -387,6 +388,56 @@ $ test_s
 
 ---
 
+### Feature 9: Fast System-Wide File Search & Path Discovery
+
+#### Plain-Language Explanation
+Provides a fast, recursive file-search command (`find` and `search`) that traverses the directory tree from root (`/`) or any specified subfolder, outputting the absolute path of matching files.
+
+In addition, standard commands (`cat`, `head`, `tail`, `grep`, `wc`, `cp`, and `sh`) now feature **intelligent path discovery**:
+- If a user runs a command on a file that does not exist in the current working directory, instead of a blunt "file not found" error, the command automatically triggers a fast system-wide search.
+- If the file exists in another directory (e.g. `/docs/secret.txt`), the command reports its actual path:
+  `cat: 'secret.txt' not in current directory; found at: /docs/secret.txt`
+- If the file does not exist anywhere in the system, it prints:
+  `cat: 'secret.txt': file not exists`
+
+#### OS Concept Demonstrated
+- Hierarchical file system traversal (`stat()`, directory inodes, `struct dirent`).
+- POSIX stream recursion and path buffer synthesis.
+- Userland library integration (`ulib.c`) providing uniform error reporting and path recovery across core utilities.
+- File system capacity scaling (`FSSIZE` expansion in `kernel/param.h`).
+
+#### Implementation Details
+1. **Recursive Search Engine (`user/ulib.c: find_file()`)**:
+   - Recursively opens directories, reads `struct dirent` records, builds absolute path buffers, and compares filenames against target queries.
+2. **Intelligent Error Dispatcher (`user/ulib.c: file_not_found()`, `open_or_locate()`)**:
+   - `open_or_locate(cmd, path, flags)` wraps standard `open()`. If opening fails, it executes `find_file("/", base, ...)` to determine if the target resides in another folder and outputs the path, or confirms non-existence.
+   - Built with raw `write()` system calls to prevent linking dependencies with `forktest`.
+3. **Core Utility Updates**:
+   - Updated `cat.c`, `head.c`, `tail.c`, `grep.c`, `wc.c`, `cp.c`, and `sh.c` to use `open_or_locate()` and `file_not_found()`.
+4. **CLI Utilities & Tests**:
+   - Added `user/find.c` (recursive file finder) and `user/search.c` (alias).
+   - Added `user/test_find.c` validating deep file discovery, non-existent rejection, and error message paths.
+   - Scaled `FSSIZE` to 4000 blocks in `kernel/param.h` to comfortably host all utilities and test binaries.
+
+#### Demo Output
+```bash
+$ find README
+/README
+
+$ mkdir docs
+$ echo secret > docs/secret.txt
+$ find secret.txt
+/docs/secret.txt
+
+$ cat secret.txt
+cat: 'secret.txt' not in current directory; found at: /docs/secret.txt
+
+$ cat missing.txt
+cat: 'missing.txt': file not exists
+```
+
+---
+
 ## 5. Live Demonstration Script (~10 Minutes)
 
 Follow this step-by-step sequence when demonstrating the project to the professor:
@@ -475,11 +526,38 @@ Follow this step-by-step sequence when demonstrating the project to the professo
    ```
 4. Run the automated unit test: `test_tab`
 
+### Step 8: Fast File Search & Smart Path Discovery (1.5 min)
+1. Run fast search for a known file:
+   ```bash
+   $ find README
+   /README
+   ```
+2. Create a nested file in a directory and search for it:
+   ```bash
+   $ mkdir docs
+   $ echo "Course Report" > docs/report.txt
+   $ find report.txt
+   /docs/report.txt
+   ```
+3. Demonstrate intelligent path discovery on command failure:
+   Attempt to read `report.txt` from `/` without specifying the directory:
+   ```bash
+   $ cat report.txt
+   cat: 'report.txt' not in current directory; found at: /docs/report.txt
+   ```
+   Show that xv6 automatically searched the filesystem and helped the user locate the file!
+4. Show proper non-existence error handling when a file truly doesn't exist:
+   ```bash
+   $ cat ghost_file
+   cat: 'ghost_file': file not exists
+   ```
+5. Run the automated unit test: `test_find`
+
 ---
 
 ## 6. Automated Test Suite Summary
 
-All eight features are covered by automated unit/integration tests included in `fs.img`:
+All nine features are covered by automated unit/integration tests included in `fs.img`:
 - `test_ps`: Validates kernel process table retrieval.
 - `test_sysinfo`: Validates memory accounting and tick reporting.
 - `test_trace`: Validates mask setting and syscall trap printouts.
@@ -488,6 +566,7 @@ All eight features are covered by automated unit/integration tests included in `
 - `test_symlink`: Validates soft link inode creation and dereference.
 - `test_cow`: Validates copy-on-write fault interception and isolation.
 - `test_tab`: Validates shell tab-completion matching and directory scanning.
+- `test_find`: Validates fast recursive search and intelligent path error reporting.
 
 ---
 

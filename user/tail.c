@@ -52,8 +52,8 @@ int main(int argc, char *argv[]) {
     tail(0, n);
   } else {
     for (; i < argc; i++) {
-      int fd = open(argv[i], 0);
-      if (fd < 0) { fprintf(2, "tail: cannot open %s\n", argv[i]); exit(1); }
+      int fd = open_or_locate("tail", argv[i], 0);
+      if (fd < 0) { exit(1); }
       tail(fd, n);
       close(fd);
     }

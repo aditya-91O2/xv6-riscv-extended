@@ -79,14 +79,13 @@ runcmd(struct cmd *cmd)
     if (ecmd->argv[0] == 0)
       exit(1);
     exec(ecmd->argv[0], ecmd->argv);
-    fprintf(2, "exec %s failed\n", ecmd->argv[0]);
+    file_not_found("sh", ecmd->argv[0]);
     break;
 
   case REDIR:
     rcmd = (struct redircmd *)cmd;
     close(rcmd->fd);
-    if (open(rcmd->file, rcmd->mode) < 0) {
-      fprintf(2, "open %s failed\n", rcmd->file);
+    if (open_or_locate("sh", rcmd->file, rcmd->mode) < 0) {
       exit(1);
     }
     runcmd(rcmd->cmd);

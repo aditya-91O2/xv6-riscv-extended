@@ -32,8 +32,7 @@ main(int argc, char *argv[])
   }
 
   for (i = 1; i < argc; i++) {
-    if ((fd = open(argv[i], O_RDONLY)) < 0) {
-      fprintf(2, "cat: cannot open %s\n", argv[i]);
+    if ((fd = open_or_locate("cat", argv[i], O_RDONLY)) < 0) {
       exit(1);
     }
     cat(fd);

@@ -47,6 +47,9 @@ int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
 char *sbrk(int);
 char *sbrklazy(int);
+int find_file(const char *, const char *, char *, int);
+void file_not_found(const char *, const char *);
+int open_or_locate(const char *, const char *, int);
 
 // printf.c
 void fprintf(int, const char *, ...) __attribute__((format(printf, 2, 3)));

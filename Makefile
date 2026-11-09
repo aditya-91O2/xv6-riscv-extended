@@ -169,6 +169,9 @@ UPROGS=\
 	$U/_test_trace\
 	$U/_test_utils\
 	$U/_test_tab\
+	$U/_find\
+	$U/_search\
+	$U/_test_find\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

@@ -2,7 +2,7 @@
 
 **Repository Branch**: `features`  
 **Last Updated**: November 9, 2026  
-**Status**: All 8 planned features completed, tested, and validated in QEMU.
+**Status**: All 9 planned features completed, tested, and validated in QEMU.
 
 ---
 
@@ -18,6 +18,7 @@
 | **Symbolic Links** (`ln -s`, `symlink`) | Done | Team Member 3 | `test_symlink` |
 | **Copy-on-Write Fork** (`COW`, `cowcopy`) | Done | All / Senior Lead | `test_cow` |
 | **Shell Tab-Completion & Line Editing** (`sh`, `test_tab`) | Done | Team Member 1 | `test_tab` |
+| **Fast File Search & Path Discovery** (`find`, `search`, `test_find`) | Done | Team Member 2 | `test_find` |
 
 ---
 
@@ -136,6 +137,12 @@ Follow this strict 7-step checklist whenever introducing a new syscall:
 - **Multi-match listing**: If more than 1 candidate matches, `sh.c` prints all matching names on a new line and reprints `$ <prefix>`.
 - **Backspace forward**: When backspacing past already-delivered input (`cons.e == cons.w`), the console sends `\b` to user space, allowing `sh.c` to pop characters and emit `\b \b`.
 
+### 5.6 Fast File Search & Smart Path Error Discovery
+- **Design Decision**: Implemented recursive file system traversal in `user/ulib.c: find_file()` using directory entry descriptors (`struct dirent`) and `stat()`.
+- **Unified Error Dispatcher**: Implemented `open_or_locate()` and `file_not_found()` in `ulib.c` using raw `write(2, ...)` system calls. This avoids introducing a dependency on `printf.o`, preserving the standalone build of `forktest`.
+- **Command Integration**: Integrated into `cat`, `head`, `tail`, `grep`, `wc`, `cp`, and `sh`. When a file cannot be opened locally, the command searches `/`. If found, it outputs the path; if not found anywhere, it outputs `'<file>': file not exists`.
+- **Disk Scaling**: Expanded `FSSIZE` in `kernel/param.h` from 2000 to 4000 blocks to accommodate all userland binaries without overflowing `fs.img` sectors.
+
 ---
 
 ## 6. How to Run Automated Testing
@@ -150,6 +157,7 @@ test_nice
 test_symlink
 test_cow
 test_tab
+test_find
 ```
 Or run the host automated regression script from WSL:
 ```bash
@@ -158,7 +166,7 @@ python3 -c "
 import subprocess, time
 p = subprocess.Popen(['make', 'qemu'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 time.sleep(3)
-for cmd in [b'test_utils\n', b'test_ps\n', b'test_sysinfo\n', b'test_trace\n', b'test_nice\n', b'test_symlink\n', b'test_cow\n', b'test_tab\n']:
+for cmd in [b'test_utils\n', b'test_ps\n', b'test_sysinfo\n', b'test_trace\n', b'test_nice\n', b'test_symlink\n', b'test_cow\n', b'test_tab\n', b'test_find\n']:
     p.stdin.write(cmd); p.stdin.flush(); time.sleep(1)
 p.terminate()
 raw, _ = p.communicate(timeout=3)
@@ -170,6 +178,7 @@ print(raw.decode('latin1', errors='replace'))
 
 ## 7. Changelog (Newest First)
 
+- **2026-11-09**: Implemented Feature 9 (Fast File Search `find`/`search`, intelligent path error discovery in core commands, `FSSIZE=4000`, `test_find`).
 - **2026-11-09**: Implemented Feature 8 (Shell Tab-Completion and interactive line editor in `user/sh.c` and `kernel/console.c`, added `test_tab`).
 - **2026-11-09**: Added `uptime` CLI utility, built and verified automated test runners (`test_ps`, `test_sysinfo`, `test_trace`, `test_utils`).
 - **2026-11-09**: Implemented Feature 7 (Copy-on-Write fork) with `pageref` physical frame refcounts and store page fault handler.

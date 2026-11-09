@@ -7,9 +7,8 @@ int main(int argc, char *argv[]) {
     fprintf(2, "Usage: cp src dst\n");
     exit(1);
   }
-  int src = open(argv[1], 0);
+  int src = open_or_locate("cp", argv[1], 0);
   if (src < 0) {
-    fprintf(2, "cp: cannot open %s\n", argv[1]);
     exit(1);
   }
   int dst = open(argv[2], O_CREATE | O_WRONLY);

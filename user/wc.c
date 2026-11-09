@@ -44,8 +44,7 @@ main(int argc, char *argv[])
   }
 
   for (i = 1; i < argc; i++) {
-    if ((fd = open(argv[i], O_RDONLY)) < 0) {
-      printf("wc: cannot open %s\n", argv[i]);
+    if ((fd = open_or_locate("wc", argv[i], O_RDONLY)) < 0) {
       exit(1);
     }
     wc(fd, argv[i]);

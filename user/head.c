@@ -25,8 +25,8 @@ int main(int argc, char *argv[]) {
     head(0, n);
   } else {
     for (; i < argc; i++) {
-      int fd = open(argv[i], 0);
-      if (fd < 0) { fprintf(2, "head: cannot open %s\n", argv[i]); exit(1); }
+      int fd = open_or_locate("head", argv[i], 0);
+      if (fd < 0) { exit(1); }
       head(fd, n);
       close(fd);
     }
