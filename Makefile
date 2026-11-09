@@ -168,6 +168,7 @@ UPROGS=\
 	$U/_test_sysinfo\
 	$U/_test_trace\
 	$U/_test_utils\
+	$U/_test_tab\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

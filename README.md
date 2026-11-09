@@ -61,6 +61,7 @@ make qemu
 | **5** | Priority CPU Scheduler (`nice`) | Kernel Scheduling | Medium | `nice` (sys #26) | **Completed & Verified** |
 | **6** | Symbolic Links & Path Resolution (`ln -s`) | File System (VFS/Vnode) | Medium | `symlink` (sys #27) | **Completed & Verified** |
 | **7** | Copy-on-Write (COW) Page Allocation | Virtual Memory | Hard | Store Page-Fault (`scause 15`) | **Completed & Verified** |
+| **8** | Shell Tab-Completion & Line Editing | Shell / I/O Subsystem | Medium | Console Read/Interrupt Interception | **Completed & Verified** |
 
 ---
 
@@ -342,6 +343,50 @@ COW fork test passed!
 
 ---
 
+### Feature 8: Shell Tab-Completion & Line Editing
+
+#### Plain-Language Explanation
+Enables interactive auto-completion of commands and filenames in the xv6 shell when pressing the `[Tab]` key.
+- If a prefix uniquely matches a file or command in the current directory (e.g. `upt[Tab]`), the shell automatically completes the remainder (`uptime `) directly on the command line.
+- If multiple candidates match (e.g. `test_s[Tab]`), the shell prints all matching filenames (`test_symlink  test_sysinfo`), redisplays the prompt, and preserves the typed prefix.
+- Also supports backspacing across tab-completed words without corrupting the terminal buffer.
+
+#### OS Concept Demonstrated
+- Console input architecture: interrupt handler (`consoleintr`), line discipline buffering (`cons.buf`), and synchronous user-space read (`consoleread`).
+- Separation of concerns between device drivers and user-space shells.
+- Directory stream parsing and prefix matching via `struct dirent`.
+- Terminal escape sequences and cursor control.
+
+#### Implementation Details
+1. **Console Driver Hook (`kernel/console.c`)**:
+   - In `consoleintr()`, intercepted `\t` (ASCII 9). Instead of echoing an unhelpful tab character to UART, it stores `\t` in `cons.buf`, updates `cons.w = cons.e`, and triggers `wakeup(&cons.r)`.
+   - In `consoleread()`, added `\t` and `\b` as immediate loop break conditions (`if (c == '\n' || c == '\t' || c == '\b') break;`) so tab keypresses immediately yield control back to the user-space line reader.
+   - For backspace when the user has already consumed characters (`cons.e == cons.w`), forwarded `\b` to user space.
+2. **Interactive Shell Reader (`user/sh.c`)**:
+   - Replaced plain `gets()` in `getcmd()` with an interactive character reader.
+   - `tab_complete()` extracts the current word prefix backward from cursor, opens `.` (`O_RDONLY`), traverses directory entries (`struct dirent`), and matches candidates via prefix comparison.
+   - On a unique match, writes the suffix string and a trailing space to stdout (`write(1, ...)`) and appends them to the input buffer.
+   - On ambiguous matches, prints all options on a new line and reprints the prompt and line buffer.
+3. **Automated Unit Test (`user/test_tab.c`)**:
+   - Programmatically tests unique prefix completion (`upt` -> `uptime`, `test_co` -> `test_cow`), multiple candidate detection (`test_s` -> 2 matches), and non-existent prefix rejection (`xyz999` -> 0 matches).
+
+#### Demo Output
+```bash
+$ upt[Tab] -> completes to:
+$ uptime 
+uptime: 37 ticks (0 seconds)
+
+$ head -1 RE[Tab] -> completes to:
+$ head -1 README 
+xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
+
+$ test_s[Tab]
+test_symlink  test_sysinfo  
+$ test_s
+```
+
+---
+
 ## 5. Live Demonstration Script (~10 Minutes)
 
 Follow this step-by-step sequence when demonstrating the project to the professor:
@@ -407,11 +452,34 @@ Follow this step-by-step sequence when demonstrating the project to the professo
    ```
 2. Explain: Parent and child initially shared the identical physical address. When the child mutated memory, a hardware page fault safely triggered copy-on-write without modifying the parent.
 
+### Step 7: Interactive Shell Tab-Completion (1 min)
+1. In the shell, type partial command name and press Tab:
+   ```bash
+   $ upt[Tab]
+   ```
+   Show that the shell immediately completes it to `$ uptime `!
+   Press Enter to run it:
+   ```bash
+   uptime: 45 ticks (0 seconds)
+   ```
+2. Demonstrate argument completion:
+   ```bash
+   $ head -1 RE[Tab]
+   ```
+   Completes to `head -1 README ` and outputs the first line of the README file!
+3. Demonstrate multi-match ambiguity listing:
+   ```bash
+   $ test_s[Tab]
+   test_symlink  test_sysinfo  
+   $ test_s
+   ```
+4. Run the automated unit test: `test_tab`
+
 ---
 
 ## 6. Automated Test Suite Summary
 
-All seven features are covered by automated unit/integration tests included in `fs.img`:
+All eight features are covered by automated unit/integration tests included in `fs.img`:
 - `test_ps`: Validates kernel process table retrieval.
 - `test_sysinfo`: Validates memory accounting and tick reporting.
 - `test_trace`: Validates mask setting and syscall trap printouts.
@@ -419,6 +487,7 @@ All seven features are covered by automated unit/integration tests included in `
 - `test_nice`: Validates CPU priority enforcement.
 - `test_symlink`: Validates soft link inode creation and dereference.
 - `test_cow`: Validates copy-on-write fault interception and isolation.
+- `test_tab`: Validates shell tab-completion matching and directory scanning.
 
 ---
 

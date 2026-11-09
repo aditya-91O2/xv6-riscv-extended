@@ -2,7 +2,7 @@
 
 **Repository Branch**: `features`  
 **Last Updated**: November 9, 2026  
-**Status**: All 7 planned features completed, tested, and validated in QEMU.
+**Status**: All 8 planned features completed, tested, and validated in QEMU.
 
 ---
 
@@ -17,6 +17,7 @@
 | **Priority Scheduling** (`nice`) | Done | Team Member 3 | `test_nice` |
 | **Symbolic Links** (`ln -s`, `symlink`) | Done | Team Member 3 | `test_symlink` |
 | **Copy-on-Write Fork** (`COW`, `cowcopy`) | Done | All / Senior Lead | `test_cow` |
+| **Shell Tab-Completion & Line Editing** (`sh`, `test_tab`) | Done | Team Member 1 | `test_tab` |
 
 ---
 
@@ -128,6 +129,13 @@ Follow this strict 7-step checklist whenever introducing a new syscall:
 - **Design Decision**: A malicious or recursive symlink chain (e.g., `ln -s a b; ln -s b a`) could lock the kernel in an infinite loop inside `sys_open`.
 - **Solution**: We implemented a hard recursion depth limit of 10 hops. If depth exceeds 10, `sys_open` aborts and returns `-1`.
 
+### 5.5 Shell Tab-Completion & Line Editing
+- **Design Decision**: `consoleintr` in `kernel/console.c` is an interrupt handler and cannot perform disk I/O to read directories. Therefore, path/command completion must execute in user space inside `user/sh.c`.
+- **Interrupt Wakeup Hook**: `consoleintr()` treats `\t` as a wake-up event for `consoleread()` without echoing the tab to the display. `consoleread()` breaks on `\t` and returns immediately.
+- **Suffix Output**: `sh.c` reads the prefix, opens `.` to find matching `struct dirent` records, prints only the completion suffix and trailing space to stdout (`write(1, ...)`), and updates its internal command buffer.
+- **Multi-match listing**: If more than 1 candidate matches, `sh.c` prints all matching names on a new line and reprints `$ <prefix>`.
+- **Backspace forward**: When backspacing past already-delivered input (`cons.e == cons.w`), the console sends `\b` to user space, allowing `sh.c` to pop characters and emit `\b \b`.
+
 ---
 
 ## 6. How to Run Automated Testing
@@ -141,6 +149,7 @@ test_trace
 test_nice
 test_symlink
 test_cow
+test_tab
 ```
 Or run the host automated regression script from WSL:
 ```bash
@@ -149,7 +158,7 @@ python3 -c "
 import subprocess, time
 p = subprocess.Popen(['make', 'qemu'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 time.sleep(3)
-for cmd in [b'test_utils\n', b'test_ps\n', b'test_sysinfo\n', b'test_trace\n', b'test_nice\n', b'test_symlink\n', b'test_cow\n']:
+for cmd in [b'test_utils\n', b'test_ps\n', b'test_sysinfo\n', b'test_trace\n', b'test_nice\n', b'test_symlink\n', b'test_cow\n', b'test_tab\n']:
     p.stdin.write(cmd); p.stdin.flush(); time.sleep(1)
 p.terminate()
 raw, _ = p.communicate(timeout=3)
@@ -161,6 +170,7 @@ print(raw.decode('latin1', errors='replace'))
 
 ## 7. Changelog (Newest First)
 
+- **2026-11-09**: Implemented Feature 8 (Shell Tab-Completion and interactive line editor in `user/sh.c` and `kernel/console.c`, added `test_tab`).
 - **2026-11-09**: Added `uptime` CLI utility, built and verified automated test runners (`test_ps`, `test_sysinfo`, `test_trace`, `test_utils`).
 - **2026-11-09**: Implemented Feature 7 (Copy-on-Write fork) with `pageref` physical frame refcounts and store page fault handler.
 - **2026-11-09**: Implemented Feature 6 (`symlink` syscall, `T_SYMLINK` inode, path traversal loop protection, `ln -s`).

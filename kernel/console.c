@@ -126,8 +126,8 @@ consoleread(int user_dst, uint64 dst, int n)
     dst++;
     --n;
 
-    if (c == '\n') {
-      // a whole line has arrived, return to
+    if (c == '\n' || c == '\t' || c == '\b') {
+      // a whole line, tab, or backspace has arrived, return to
       // the user-level read().
       break;
     }
@@ -164,6 +164,17 @@ consoleintr(int c)
     if (cons.e != cons.w) {
       cons.e--;
       consputc(BACKSPACE);
+    } else if (cons.e - cons.r < INPUT_BUF_SIZE) {
+      cons.buf[cons.e++ % INPUT_BUF_SIZE] = '\b';
+      cons.w = cons.e;
+      wakeup(&cons.r);
+    }
+    break;
+  case '\t': // Tab completion trigger
+    if (cons.e - cons.r < INPUT_BUF_SIZE) {
+      cons.buf[cons.e++ % INPUT_BUF_SIZE] = '\t';
+      cons.w = cons.e;
+      wakeup(&cons.r);
     }
     break;
   default:

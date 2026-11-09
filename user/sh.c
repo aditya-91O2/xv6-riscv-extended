@@ -1,6 +1,8 @@
 // Shell.
 
 #include "kernel/types.h"
+#include "kernel/stat.h"
+#include "kernel/fs.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
@@ -131,14 +133,155 @@ runcmd(struct cmd *cmd)
   exit(0);
 }
 
+static void
+copy_name(char *dst, const char *src, int n)
+{
+  int i;
+  for (i = 0; i < n && src[i]; i++) {
+    dst[i] = src[i];
+  }
+  dst[i] = '\0';
+}
+
+static int
+starts_with(const char *str, const char *prefix)
+{
+  while (*prefix) {
+    if (*prefix++ != *str++)
+      return 0;
+  }
+  return 1;
+}
+
+static int
+tab_complete(char *buf, int *len, int max)
+{
+  int i = *len;
+  int tok_start = i;
+  while (tok_start > 0 && buf[tok_start - 1] != ' ' && buf[tok_start - 1] != '\t' &&
+         buf[tok_start - 1] != '|' && buf[tok_start - 1] != '<' && buf[tok_start - 1] != '>') {
+    tok_start--;
+  }
+
+  char prefix[DIRSIZ + 1];
+  int plen = i - tok_start;
+  if (plen == 0)
+    return 0; // Don't trigger on empty token
+
+  if (plen > DIRSIZ)
+    plen = DIRSIZ;
+  memmove(prefix, &buf[tok_start], plen);
+  prefix[plen] = '\0';
+
+  int fd = open(".", O_RDONLY);
+  if (fd < 0)
+    return 0;
+
+  struct dirent de;
+  int count = 0;
+  char match[DIRSIZ + 1];
+  match[0] = '\0';
+
+  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+    if (de.inum == 0)
+      continue;
+    char fname[DIRSIZ + 1];
+    copy_name(fname, de.name, DIRSIZ);
+    if (strcmp(fname, ".") == 0 || strcmp(fname, "..") == 0)
+      continue;
+    if (starts_with(fname, prefix)) {
+      if (count == 0) {
+        copy_name(match, fname, DIRSIZ);
+      }
+      count++;
+    }
+  }
+
+  if (count == 1) {
+    close(fd);
+    char *suffix = match + plen;
+    while (*suffix && *len + 1 < max) {
+      char ch = *suffix++;
+      buf[(*len)++] = ch;
+      write(1, &ch, 1);
+    }
+    if (*len + 1 < max) {
+      buf[(*len)++] = ' ';
+      write(1, " ", 1);
+    }
+    buf[*len] = '\0';
+    return 1;
+  }
+
+  if (count > 1) {
+    close(fd);
+    fd = open(".", O_RDONLY);
+    if (fd < 0)
+      return count;
+    printf("\n");
+    while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+      if (de.inum == 0)
+        continue;
+      char fname[DIRSIZ + 1];
+      copy_name(fname, de.name, DIRSIZ);
+      if (strcmp(fname, ".") == 0 || strcmp(fname, "..") == 0)
+        continue;
+      if (starts_with(fname, prefix)) {
+        printf("%s  ", fname);
+      }
+    }
+    printf("\n");
+    close(fd);
+
+    write(2, "$ ", 2);
+    write(1, buf, *len);
+    return count;
+  }
+
+  close(fd);
+  return 0;
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
   write(2, "$ ", 2);
   memset(buf, 0, nbuf);
-  gets(buf, nbuf);
-  if (buf[0] == 0) // EOF
-    return -1;
+
+  int len = 0;
+  char c;
+
+  while (len + 1 < nbuf) {
+    int cc = read(0, &c, 1);
+    if (cc < 1) {
+      if (len == 0)
+        return -1; // EOF
+      break;
+    }
+
+    if (c == '\n' || c == '\r') {
+      buf[len++] = '\n';
+      break;
+    }
+
+    if (c == '\t') {
+      tab_complete(buf, &len, nbuf);
+      continue;
+    }
+
+    if (c == '\b') {
+      if (len > 0) {
+        len--;
+        buf[len] = '\0';
+        write(1, "\b \b", 3);
+      }
+      continue;
+    }
+
+    buf[len++] = c;
+  }
+
+  buf[len] = '\0';
   return 0;
 }
 
